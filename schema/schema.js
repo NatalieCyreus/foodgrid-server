@@ -3,6 +3,7 @@ const _= require('lodash');
 
 const Recipe = require('../models/recipe');
 const User = require('../models/user');
+const Ingredient = require('../models/ingredient');
 
 const {
   GraphQLObjectType,
@@ -11,6 +12,7 @@ const {
   GraphQLID,
   GraphQLList,
   GraphQLNonNull,
+  GraphQLBoolean,
   GraphQLSchema } = graphql;
 
 
@@ -21,14 +23,37 @@ const RecipeType = new GraphQLObjectType({
     title: { type: GraphQLString },
     category: { type: new GraphQLList(GraphQLString)},
     about: { type: GraphQLString },
-    ingredients: { type: new GraphQLList(GraphQLString)},
+    ingredients: {
+      type: new GraphQLList(IngredientType),
+      resolve(parent) {
+        return Recipe.findIngredients(parent.id);
+      }
+    },
     directions: { type: new GraphQLList(GraphQLString)},
     likes: { type: GraphQLInt },
     user: {
       type: UserType,
       resolve(parent, args) {
-        //return _.find( users, { id: parent.userId } );
         return User.findById(parent.userId);
+      }
+    }
+  })
+});
+
+const IngredientType = new GraphQLObjectType({
+  name: 'Ingredient',
+  fields: () => ({
+    text: { type: GraphQLString },
+    id: { type: GraphQLID },
+    complete: { type: GraphQLBoolean },
+    recipe: {
+      type: RecipeType,
+      resolve(parentValue) {
+        return Ingredient.findById(parentValue).populate('Recipe')
+          .then(ingredient => {
+            console.log(ingredient)
+            return ingredient.recipe
+          });
       }
     }
   })
@@ -46,7 +71,6 @@ const UserType = new GraphQLObjectType({
     recipes: {
       type: new GraphQLList(RecipeType),
       resolve(parent, args) {
-        //return _.filter(recipes, { userId: parent.id })
         return Recipe.find({userId: parent.id});
       }
     }
@@ -61,8 +85,6 @@ const RootQuery = new GraphQLObjectType({
       type: RecipeType,
       args: { id: { type: GraphQLID } },
       resolve(parent, args) {
-        //code to get data from db / other source
-        //return _.find(recipes, {id: args.id});
         return Recipe.findById(args.id);
       }
     },
@@ -70,22 +92,28 @@ const RootQuery = new GraphQLObjectType({
       type: UserType,
       args: { id: { type: GraphQLID }},
       resolve(parent, args) {
-        //return _.find(users,{ id:args.id });
         return User.findById(args.id);
       }
     },
     recipes: {
       type: new GraphQLList(RecipeType),
       resolve(parent, args) {
-        //return recipes
         return Recipe.find({});
       }
     },
     users: {
       type: new GraphQLList(UserType),
       resolve(parent, args) {
-        //return users
         return User.find({});
+      }
+    },
+    ingredient: {
+      type: IngredientType,
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve(parnetValue, { id }) {
+        return Ingredient.findById(id);
       }
     }
   }
@@ -120,7 +148,6 @@ const Mutation = new GraphQLObjectType({
         title: { type: new GraphQLNonNull(GraphQLString) },
         category: { type: new GraphQLNonNull(new GraphQLList(GraphQLString)) },
         about: { type: new GraphQLNonNull(GraphQLString) },
-        ingredients: { type: new GraphQLNonNull(new GraphQLList(GraphQLString)) },
         directions: { type: new GraphQLNonNull(new GraphQLList(GraphQLString)) },
         userId: { type: new GraphQLNonNull(GraphQLID) }
       },
@@ -129,14 +156,24 @@ const Mutation = new GraphQLObjectType({
           title: args.title,
           category: args.category,
           about: args.about,
-          ingredients: args.ingredients,
           directions: args.directions,
           likes: 0,
           userId: args.userId
         });
         return recipe.save();
       }
-    }
+    },
+    addIngredientToRecipe: {
+      type: RecipeType,
+      args: {
+        text: { type: GraphQLString },
+        complete: { type: GraphQLBoolean },
+        recipeId: { type: GraphQLID }
+      },
+      resolve(parent, { text, recipeId, complete }) {
+        return Recipe.addIngredient(text, recipeId, complete);
+      }
+    },
   }
 })
 
