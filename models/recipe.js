@@ -3,36 +3,37 @@ const Schema = mongoose.Schema;
 
 const recipeSchema = new Schema({
   title: String,
-  category: [String],
+  category: [{type: String}],
   about: String,
-  ingredients: [{
-    type: Schema.Types.ObjectId,
-    ref:'ingredient'
-  }],
-  directions: [String],
+  ingredients: [{type: String}],
+  directions: [{type: String}],
   likes: Number,
   userId: String,
+  comments: [{
+    type: Schema.Types.ObjectId,
+    ref:'comments'
+  }],
 },{
   usePushEach: true
 });
 
-recipeSchema.statics.addIngredient = function (text, recipeId, complete) {
-  const Ingredient = mongoose.model('ingredient');
+recipeSchema.statics.addComment = function (text, recipeId, userId) {
+  const Comment = mongoose.model('comment');
 
   return this.findById(recipeId)
   .then(recipe => {
-    const ingredient = new Ingredient({text, complete:false, recipe})
-    recipe.ingredients.push(ingredient)
-    return Promise.all([ingredient.save(), recipe.save()])
-    .then(([ingredient, recipe]) => recipe);
+    const comment = new Comment({text, recipe, userId})
+    recipe.comment.push(comment)
+    return Promise.all([comment.save(), recipe.save()])
+    .then(([comment, recipe]) => recipe);
   });
 };
 
 
-recipeSchema.statics.findIngredients = function(id) {
+recipeSchema.statics.findComment = function(id) {
   return this.findById(id)
-    .populate('ingredients')
-    .then(recipe => recipe.ingredients);
+    .populate('comment')
+    .then(recipe => recipe.comment);
 }
 
 
