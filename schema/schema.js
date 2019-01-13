@@ -3,7 +3,8 @@ const _= require('lodash');
 
 const Recipe = require('../models/recipe');
 const User = require('../models/user');
-const Ingredient = require('../models/ingredient');
+const Comment = require('../models/comment');
+const AuthService = require('../services/auth');
 
 const {
   GraphQLObjectType,
@@ -21,38 +22,39 @@ const RecipeType = new GraphQLObjectType({
   fields: () => ({
     id: { type: GraphQLID },
     title: { type: GraphQLString },
-    category: { type: new GraphQLList(GraphQLString)},
+    category: { type: new GraphQLList(GraphQLString) },
     about: { type: GraphQLString },
-    ingredients: {
-      type: new GraphQLList(IngredientType),
-      resolve(parent) {
-        return Recipe.findIngredients(parent.id);
-      }
-    },
-    directions: { type: new GraphQLList(GraphQLString)},
+    ingredients: { type: new GraphQLList(GraphQLString) },
+    directions: { type: new GraphQLList(GraphQLString) },
     likes: { type: GraphQLInt },
     user: {
       type: UserType,
       resolve(parent, args) {
         return User.findById(parent.userId);
       }
-    }
+    },
+    comments: {
+      type: new GraphQLList(CommentType),
+      resolve(parent) {
+        return Recipe.findComments(parent.id);
+      }
+    },
   })
 });
 
-const IngredientType = new GraphQLObjectType({
-  name: 'Ingredient',
+const CommentType = new GraphQLObjectType({
+  name: 'Comment',
   fields: () => ({
     text: { type: GraphQLString },
     id: { type: GraphQLID },
-    complete: { type: GraphQLBoolean },
+    UserId: { type: GraphQLID },
     recipe: {
       type: RecipeType,
       resolve(parentValue) {
-        return Ingredient.findById(parentValue).populate('Recipe')
-          .then(ingredient => {
-            console.log(ingredient)
-            return ingredient.recipe
+        return Comment.findById(parentValue).populate('Recipe')
+          .then(comment => {
+            console.log(comment)
+            return comment.recipe
           });
       }
     }
@@ -88,6 +90,12 @@ const RootQuery = new GraphQLObjectType({
         return Recipe.findById(args.id);
       }
     },
+    loggedInUser: {
+      type: UserType,
+      resolve(parent, args, req) {
+        return req.user;
+      }
+    },
     user: {
       type: UserType,
       args: { id: { type: GraphQLID }},
@@ -107,13 +115,13 @@ const RootQuery = new GraphQLObjectType({
         return User.find({});
       }
     },
-    ingredient: {
-      type: IngredientType,
+    comment: {
+      type: CommentType,
       args: {
         id: { type: new GraphQLNonNull(GraphQLID) }
       },
       resolve(parnetValue, { id }) {
-        return Ingredient.findById(id);
+        return Comment.findById(id);
       }
     }
   }
@@ -123,32 +131,45 @@ const RootQuery = new GraphQLObjectType({
 const Mutation = new GraphQLObjectType({
   name: 'Mutation',
   fields: {
-    addUser: {
+    signup: {
       type: UserType,
       args: {
         email: { type: new GraphQLNonNull(GraphQLString) },
+        password: { type: new GraphQLNonNull(GraphQLString) },
         username: { type: new GraphQLNonNull(GraphQLString) },
-        name: { type: new GraphQLNonNull(GraphQLString) },
-        about: { type: new GraphQLNonNull(GraphQLString) },
+        name: { type: GraphQLString },
+        about: { type: GraphQLString },
       },
-      resolve(parent, args) {
-        let user = new User({
-          email: args.email,
-          username: args.username,
-          name: args.name,
-          about: args.about,
-          followers: 0
-        });
-        return user.save();
+      resolve(parent, { email, password, username }, req) {
+        return AuthService.signup({ email, password, username, req });
+      }
+    },
+    logout: {
+      type: UserType,
+      resolve(parent, args, req) {
+        const { user } = req;
+        req.logout();
+        return user;
+      }
+    },
+    login: {
+      type: UserType,
+      args: {
+        email: { type: new GraphQLNonNull(GraphQLString) },
+        password: { type: new GraphQLNonNull(GraphQLString) },
+      },
+      resolve(parent, { email, password }, req) {
+        return AuthService.login({ email, password, req });
       }
     },
     addRecipe: {
       type: RecipeType,
       args: {
         title: { type: new GraphQLNonNull(GraphQLString) },
-        category: { type: new GraphQLNonNull(new GraphQLList(GraphQLString)) },
+        category: { type: new GraphQLList(GraphQLString) },
         about: { type: new GraphQLNonNull(GraphQLString) },
-        directions: { type: new GraphQLNonNull(new GraphQLList(GraphQLString)) },
+        ingredients: { type: new GraphQLList(GraphQLString) },
+        directions: { type: new GraphQLList(GraphQLString) },
         userId: { type: new GraphQLNonNull(GraphQLID) }
       },
       resolve(parent, args) {
@@ -156,6 +177,7 @@ const Mutation = new GraphQLObjectType({
           title: args.title,
           category: args.category,
           about: args.about,
+          ingredients: args.ingredients,
           directions: args.directions,
           likes: 0,
           userId: args.userId
@@ -163,15 +185,15 @@ const Mutation = new GraphQLObjectType({
         return recipe.save();
       }
     },
-    addIngredientToRecipe: {
-      type: RecipeType,
+    addCommentToRecipe: {
+      type: CommentType,
       args: {
         text: { type: GraphQLString },
-        complete: { type: GraphQLBoolean },
-        recipeId: { type: GraphQLID }
+        recipeId: { type: GraphQLID },
+        userId: { type: GraphQLID }
       },
-      resolve(parent, { text, recipeId, complete }) {
-        return Recipe.addIngredient(text, recipeId, complete);
+      resolve(parent, { text, recipeId, userId }) {
+        return Recipe.addComment(text, recipeId, userId);
       }
     },
   }
